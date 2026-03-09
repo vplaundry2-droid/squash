@@ -1,4 +1,5 @@
 import math
+import os
 import random
 import sys
 from dataclasses import dataclass
@@ -198,7 +199,9 @@ class Game:
     def __init__(self):
         pygame.init()
         pygame.display.set_caption("Squash Sim")
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        fullscreen = os.environ.get("SQUASH_FULLSCREEN", "0") == "1"
+        flags = pygame.FULLSCREEN if fullscreen else 0
+        self.screen = pygame.display.set_mode((WIDTH, HEIGHT), flags)
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("consolas", 22)
         self.big = pygame.font.SysFont("consolas", 38, bold=True)

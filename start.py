@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -42,7 +44,19 @@ def run_game() -> None:
     runpy.run_path(str(MAIN_FILE), run_name="__main__")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Start Squash Sim")
+    parser.add_argument(
+        "--fullscreen",
+        action="store_true",
+        help="Launch the game in fullscreen mode (default is windowed).",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+    os.environ["SQUASH_FULLSCREEN"] = "1" if args.fullscreen else "0"
     ensure_pygame()
     run_game()
 
