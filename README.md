@@ -12,8 +12,10 @@ A runnable desktop squash simulation with:
 
 ## Run
 ```bash
-python3 main.py
+python3 start.py
 ```
+
+`start.py` auto-installs dependencies (only when needed) and then launches the game.
 
 ## If you already opened Python by mistake
 If your screen shows a Python prompt like `>>>`, you are inside the Python interpreter.
@@ -26,7 +28,7 @@ If your screen shows a Python prompt like `>>>`, you are inside the Python inter
 2. Run these commands in your normal terminal (not inside `>>>`):
    ```bash
    pip install -r requirements.txt
-   python3 main.py
+   python3 start.py
    ```
 
 ## Controls
