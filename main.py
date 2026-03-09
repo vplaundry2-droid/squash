@@ -36,12 +36,15 @@ OUT_LINE_Y = FLOOR_Y - int(OUT_LINE_M * SCALE)
 GRAVITY = 28.0  # m/s^2
 BALL_RADIUS_M = 0.035
 BALL_RADIUS = int(BALL_RADIUS_M * SCALE)
+AIR_DRAG = 0.08
+SPIN_DECAY = 0.92
 
 PLAYER_RADIUS = 28
 PLAYER_SPEED = 6.5  # m/s
 PLAYER_ACCEL = 30.0
 PLAYER_FRICTION = 12.0
 HIT_RANGE = 115
+MAX_CHARGE = 1.0
 
 
 @dataclass
@@ -61,6 +64,7 @@ class Ball:
         self.floor_bounces = 0
         self.hit_by = None
         self.last_front_wall_hit = False
+        self.spin = 0.0
 
     def reset_for_serve(self, server: str):
         x = WIDTH * 0.42 if server == "player" else WIDTH * 0.58
@@ -70,6 +74,7 @@ class Ball:
         self.floor_bounces = 0
         self.hit_by = None
         self.last_front_wall_hit = False
+        self.spin = 0.0
 
     def serve(self, direction: float):
         speed = random.uniform(16.0, 20.0)
@@ -79,21 +84,27 @@ class Ball:
         self.in_play = True
         self.floor_bounces = 0
         self.last_front_wall_hit = False
+        self.spin = random.uniform(-1.0, 1.0)
 
     def update(self, dt: float):
         if not self.in_play:
             return
 
         self.vel.y += GRAVITY * dt
+        self.vel *= max(0.0, 1.0 - AIR_DRAG * dt)
+        self.vel.x += self.spin * 6.0 * dt
         self.pos += self.vel * SCALE * dt
+        self.spin *= max(0.0, 1.0 - SPIN_DECAY * dt)
 
         # Side wall collisions
         if self.pos.x - BALL_RADIUS < LEFT_WALL_X:
             self.pos.x = LEFT_WALL_X + BALL_RADIUS
             self.vel.x *= -0.92
+            self.spin *= -0.7
         elif self.pos.x + BALL_RADIUS > RIGHT_WALL_X:
             self.pos.x = RIGHT_WALL_X - BALL_RADIUS
             self.vel.x *= -0.92
+            self.spin *= -0.7
 
         # Front wall collision (must be above tin)
         if self.pos.y - BALL_RADIUS < FRONT_WALL_Y:
@@ -110,8 +121,9 @@ class Ball:
         if self.pos.y + BALL_RADIUS >= FLOOR_Y:
             self.pos.y = FLOOR_Y - BALL_RADIUS
             self.vel.y *= -0.68
-            self.vel.x *= 0.96
+            self.vel.x = self.vel.x * 0.94 + self.spin * 1.8
             self.floor_bounces += 1
+            self.spin *= 0.75
 
             # Kill tiny bounces to avoid jitter
             if abs(self.vel.y) < 1.6:
@@ -122,6 +134,7 @@ class Player:
     def __init__(self):
         self.pos = Vector2(WIDTH * 0.44, FLOOR_Y - PLAYER_RADIUS)
         self.vel = Vector2(0, 0)
+        self.stamina = 1.0
 
     def update(self, dt: float, keys):
         desired = Vector2(0, 0)
@@ -134,8 +147,16 @@ class Player:
         if keys[pygame.K_s] or keys[pygame.K_DOWN]:
             desired.y += 1
 
+        sprint = (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]) and self.stamina > 0.08
+        top_speed = PLAYER_SPEED * (1.28 if sprint else 1.0)
+
+        if sprint and desired.length_squared() > 0:
+            self.stamina = max(0.0, self.stamina - 0.55 * dt)
+        else:
+            self.stamina = min(1.0, self.stamina + 0.22 * dt)
+
         if desired.length_squared() > 0:
-            desired = desired.normalize() * PLAYER_SPEED * SCALE
+            desired = desired.normalize() * top_speed * SCALE
             accel = (desired - self.vel) * min(1.0, PLAYER_ACCEL * dt)
             self.vel += accel
         else:
@@ -186,28 +207,56 @@ class Game:
         self.ai = AIPlayer()
         self.ball = Ball()
         self.score = ScoreState()
+        self.player_charge = 0.0
         self.ball.reset_for_serve(self.score.server)
 
-    def swing(self, hitter: str):
+    def swing(self, hitter: str, shot_type: str = "drive", charge: float = 0.0):
         actor = self.player if hitter == "player" else self.ai
         to_ball = self.ball.pos - actor.pos
         if to_ball.length() > HIT_RANGE:
             return False
 
-        toward_front = Vector2(0, -1)
-        side = random.uniform(-0.6, 0.6)
-        power = random.uniform(18, 24)
-        hit_vec = Vector2(side, toward_front.y).normalize() * power
+        timing_window = abs(self.ball.pos.y - (FLOOR_Y - 120))
+        timing_quality = max(0.25, 1.0 - timing_window / 260)
+        distance_quality = max(0.2, 1.0 - to_ball.length() / HIT_RANGE)
+        quality = 0.55 * timing_quality + 0.45 * distance_quality
 
-        # add lift if ball is low
+        if shot_type == "drop":
+            base_power = random.uniform(10, 13)
+            side = random.uniform(-0.25, 0.25)
+            lift = -random.uniform(2.0, 4.0)
+        elif shot_type == "lob":
+            base_power = random.uniform(15, 18)
+            side = random.uniform(-0.35, 0.35)
+            lift = -random.uniform(9.0, 12.0)
+        else:
+            base_power = random.uniform(18, 23)
+            side = random.uniform(-0.65, 0.65)
+            lift = -random.uniform(3.5, 6.5)
+
+        power = base_power + charge * 7.5
+        hit_vec = Vector2(side, -1).normalize() * power
+        hit_vec.y += lift
+
+        if quality < 0.38:
+            # Mishits happen often unless timing and position are good.
+            hit_vec.x *= random.uniform(0.4, 1.5)
+            hit_vec.y += random.uniform(1.2, 3.0)
+
+        if hitter == "ai":
+            hit_vec.x += random.uniform(-0.18, 0.18)
+        else:
+            hit_vec.x += random.uniform(-0.08, 0.08)
+
         if self.ball.pos.y > FLOOR_Y - 140:
-            hit_vec.y -= random.uniform(4.0, 7.0)
+            hit_vec.y -= random.uniform(3.0, 5.5)
 
         self.ball.vel = hit_vec
         self.ball.in_play = True
         self.ball.floor_bounces = 0
         self.ball.hit_by = hitter
         self.ball.last_front_wall_hit = False
+        self.ball.spin = side * 4.0 + charge * (1.4 if hitter == "player" else 0.8)
         return True
 
     def rule_fault(self):
@@ -241,6 +290,11 @@ class Game:
         self.ai.update(dt, self.ball)
         self.ball.update(dt)
 
+        if keys[pygame.K_k]:
+            self.player_charge = min(MAX_CHARGE, self.player_charge + 1.7 * dt)
+        else:
+            self.player_charge = max(0.0, self.player_charge - 1.4 * dt)
+
         if not self.score.game_over:
             # Serve controls
             if not self.ball.in_play:
@@ -253,12 +307,24 @@ class Game:
 
             # Player swing
             if keys[pygame.K_j]:
-                self.swing("player")
+                self.swing("player", "drive", self.player_charge)
+                self.player_charge = 0.0
+            if keys[pygame.K_u]:
+                self.swing("player", "drop", self.player_charge * 0.5)
+                self.player_charge = 0.0
+            if keys[pygame.K_i]:
+                self.swing("player", "lob", self.player_charge)
+                self.player_charge = 0.0
 
             # AI swing when close and ball on its side
             if self.ball.in_play and (self.ball.pos - self.ai.pos).length() < HIT_RANGE * 0.9 and self.ball.pos.y > FRONT_WALL_Y + 140:
                 if random.random() < 0.18:
-                    self.swing("ai")
+                    ai_shot = "drive"
+                    if self.ball.pos.y < FRONT_WALL_Y + 260:
+                        ai_shot = "lob"
+                    elif random.random() < 0.22:
+                        ai_shot = "drop"
+                    self.swing("ai", ai_shot, random.uniform(0.0, 0.6))
 
             # Rule checks
             if self.rule_fault():
@@ -307,11 +373,20 @@ class Game:
         score = self.big.render(f"You {self.score.player}  -  {self.score.ai} AI", True, (245, 245, 245))
         self.screen.blit(score, (40, 20))
 
-        help_txt = "Move: WASD/Arrows | Swing: J | Serve: SPACE"
+        help_txt = "Move: WASD/Arrows (+SHIFT sprint) | J drive | U drop | I lob | Hold K charge | SPACE serve"
         self.screen.blit(self.font.render(help_txt, True, (220, 220, 220)), (40, HEIGHT - 40))
 
         server_text = self.font.render(f"Server: {self.score.server.upper()}", True, (200, 220, 255))
         self.screen.blit(server_text, (40, 70))
+
+        stamina_w = 210
+        pygame.draw.rect(self.screen, (55, 55, 65), (40, 102, stamina_w, 12), border_radius=4)
+        pygame.draw.rect(self.screen, (90, 220, 120), (40, 102, int(stamina_w * self.player.stamina), 12), border_radius=4)
+        self.screen.blit(self.font.render("Stamina", True, (210, 225, 210)), (260, 96))
+
+        pygame.draw.rect(self.screen, (55, 55, 65), (40, 122, stamina_w, 10), border_radius=4)
+        pygame.draw.rect(self.screen, (250, 205, 90), (40, 122, int(stamina_w * self.player_charge), 10), border_radius=4)
+        self.screen.blit(self.font.render("Charge", True, (235, 215, 170)), (260, 116))
 
         if self.score.game_over:
             msg = self.big.render(f"{self.score.winner.upper()} WINS! Press R to restart", True, (255, 230, 120))
