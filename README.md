@@ -25,6 +25,21 @@ python3 start.py --fullscreen
 
 `start.py` auto-installs dependencies (only when needed) and then launches the game.
 
+
+### If Start Python opens and closes immediately
+This usually means the launcher exited with an error and the window closed before you could read it.
+
+Run from a terminal so you can see the message:
+```bash
+python start.py
+```
+
+On Windows double-click launches, use:
+```bash
+python start.py --pause-on-exit
+```
+This keeps the window open so you can read any startup error.
+
 ## If you already opened Python by mistake
 If your screen shows a Python prompt like `>>>`, you are inside the Python interpreter.
 
