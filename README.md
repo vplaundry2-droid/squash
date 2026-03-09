@@ -15,6 +15,14 @@ A runnable desktop squash simulation with:
 python3 start.py
 ```
 
+This launches the game in a regular desktop **window** by default.
+
+Optional fullscreen mode:
+
+```bash
+python3 start.py --fullscreen
+```
+
 `start.py` auto-installs dependencies (only when needed) and then launches the game.
 
 ## If you already opened Python by mistake
