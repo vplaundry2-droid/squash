@@ -15,6 +15,20 @@ A runnable desktop squash simulation with:
 python3 main.py
 ```
 
+## If you already opened Python by mistake
+If your screen shows a Python prompt like `>>>`, you are inside the Python interpreter.
+
+1. Exit Python first:
+   ```python
+   exit()
+   ```
+   (or press `Ctrl-D` on Mac/Linux, `Ctrl-Z` then Enter on Windows)
+2. Run these commands in your normal terminal (not inside `>>>`):
+   ```bash
+   pip install -r requirements.txt
+   python3 main.py
+   ```
+
 ## Controls
 - Move: `WASD` or arrow keys
 - Sprint: `SHIFT` (uses stamina)
